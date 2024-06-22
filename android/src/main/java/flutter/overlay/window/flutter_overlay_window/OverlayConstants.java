@@ -9,4 +9,5 @@ final public class OverlayConstants {
     static final String CHANNEL_ID = "Overlay Channel";
     static final int NOTIFICATION_ID = 4579;
     static final int DEFAULT_XY = -6;
+    static final int DEFAULT_REMOVE_STATEBAR_XY = -7;
 }
