@@ -71,7 +71,15 @@ public class FlutterOverlayWindowPlugin implements
         } else if (call.method.equals("requestPermission")) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION);
-                intent.setData(Uri.parse("package:" + mActivity.getPackageName()));
+                String name = context.getPackageName();
+                if (name == null) {
+                    name = mActivity.getPackageName();
+                }
+                if (name == null) {
+                    result.error("PERMISSION", "getPackageName() faild, it return null", null);
+                    return;
+                }
+                intent.setData(Uri.parse("package:" + name));
                 mActivity.startActivityForResult(intent, REQUEST_CODE_FOR_OVERLAY_PERMISSION);
             } else {
                 result.success(true);
