@@ -148,11 +148,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
             int h = displaymetrics.heightPixels;
             szWindow.set(w, h);
         }
-        startY = OverlayConstants.DEFAULT_REMOVE_STATEBAR_XY;
         int dx = ((startX == OverlayConstants.DEFAULT_XY) ? 0 : startX);
-        int dy = ((startY == OverlayConstants.DEFAULT_XY) 
-            ? 0 
-            : startY);
+        int dy = ((startY == OverlayConstants.DEFAULT_XY) ? 0 : startY);
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                 WindowSetup.width == -1999 ? -1 : WindowSetup.width,
                 WindowSetup.height == -1999 ? screenHeight() : WindowSetup.height,
