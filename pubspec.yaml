@@ -4,7 +4,7 @@ version: 0.4.4
 homepage: https://github.com/X-SLAYER/flutter_overlay_window
 
 environment:
-  sdk: ">=2.16.2 <4.0.0"
+  sdk: ">=2.17.0 <4.0.0"
   flutter: ">=2.5.0"
 
 dependencies:
