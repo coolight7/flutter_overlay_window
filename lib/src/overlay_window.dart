@@ -16,6 +16,8 @@ class FlutterOverlayWindow {
   static const _overlayMessageChannel =
       MethodChannel("x-slayer/overlay_messenger", JSONMethodCodec());
 
+  static void Function()? onScreenChange;
+
   /// Open overLay content
   ///
   /// - Optional arguments:
@@ -49,7 +51,6 @@ class FlutterOverlayWindow {
     String? overlayContent,
     bool enableDrag = false,
     PositionGravity positionGravity = PositionGravity.none,
-    OverlayPosition? startPosition,
   }) async {
     await _channel.invokeMethod(
       'showOverlay',
@@ -63,7 +64,6 @@ class FlutterOverlayWindow {
         "enableDrag": enableDrag,
         "notificationVisibility": visibility.name,
         "positionGravity": positionGravity.name,
-        "startPosition": startPosition?.toMap(),
       },
     );
   }
@@ -158,12 +158,21 @@ class FlutterOverlayWindow {
   /// `position` the new position of the overlay
   ///
   /// `return` true if the position updated successfully
-  static Future<bool?> moveOverlay(OverlayPosition position) async {
-    final bool? _res = await _channel.invokeMethod<bool?>(
+  static Future<bool?> moveOverlay(
+    double x,
+    double y,
+    double width,
+    double height,
+  ) async {
+    return _channel.invokeMethod<bool?>(
       'moveOverlay',
-      position.toMap(),
+      {
+        "x": x,
+        "y": y,
+        "width": width,
+        "height": height,
+      },
     );
-    return _res;
   }
 
   /// Get the current overlay position
@@ -182,11 +191,30 @@ class FlutterOverlayWindow {
     return _res ?? false;
   }
 
+  static Future<Size?> getScreenSize() async {
+    final Map? res = await _channel.invokeMethod(
+      'getScreenSize',
+      null,
+    );
+    final height = res?["height"];
+    final width = res?["width"];
+    if (height is double && width is double) {
+      return Size(
+        width,
+        height,
+      );
+    }
+    return null;
+  }
+
   static void _registerOverlayMessageHandler() {
     _overlayMessageChannel.setMethodCallHandler((call) async {
       switch (call.method) {
         case 'isShowingOverlay':
           _controllerOverlayStatus.add(call.arguments as bool);
+          break;
+        case 'onScreenChange':
+          onScreenChange?.call();
           break;
         case 'message':
           _controller.add(call.arguments);
