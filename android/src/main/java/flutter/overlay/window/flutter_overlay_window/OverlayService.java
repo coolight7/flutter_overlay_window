@@ -42,6 +42,16 @@ import io.flutter.plugin.common.BasicMessageChannel;
 import io.flutter.plugin.common.JSONMessageCodec;
 import io.flutter.plugin.common.MethodChannel;
 
+import android.content.BroadcastReceiver;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.pm.PackageManager;
+import android.provider.Settings;
+import android.view.LayoutInflater;
+import android.widget.TextView;
+
+import androidx.core.app.ActivityCompat;
+
 public class OverlayService extends Service implements View.OnTouchListener {
     private final int DEFAULT_NAV_BAR_HEIGHT_DP = 48;
     private final int DEFAULT_STATUS_BAR_HEIGHT_DP = 25;
@@ -70,6 +80,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private Timer mTrayAnimationTimer;
     private TrayAnimationTimerTask mTrayTimerTask;
 
+    private int screenHeight, screenWidth;
+    private BroadcastReceiver orientationReceiver;
+
     @Nullable
     @Override
     public IBinder onBind(Intent intent) {
@@ -94,14 +107,16 @@ public class OverlayService extends Service implements View.OnTouchListener {
         notificationManager.cancel(OverlayConstants.NOTIFICATION_ID);
 
         instance = null;
+        if (orientationReceiver != null) {
+            unregisterReceiver(orientationReceiver);
+            orientationReceiver = null;
+        }
     }
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         mResources = getApplicationContext().getResources();
-        int startX = intent.getIntExtra("startX", OverlayConstants.DEFAULT_XY);
-        int startY = intent.getIntExtra("startY", OverlayConstants.DEFAULT_XY);
         boolean isCloseWindow = intent.getBooleanExtra(INTENT_EXTRA_IS_CLOSE_WINDOW, false);
         if (isCloseWindow) {
             stopSelf();
@@ -137,10 +152,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
             if (call.method.equals("updateFlag")) {
                 String flag = call.argument("flag").toString();
                 updateOverlayFlag(result, flag);
-            } else if (call.method.equals("updateOverlayPosition")) {
-                int x = call.<Integer>argument("x");
-                int y = call.<Integer>argument("y");
-                moveOverlay(x, y, result);
             } else if (call.method.equals("resizeOverlay")) {
                 int width = call.argument("width");
                 int height = call.argument("height");
@@ -164,11 +175,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
             int h = displaymetrics.heightPixels;
             szWindow.set(w, h);
         }
-        int dx = ((startX == OverlayConstants.DEFAULT_XY) ? 0 : startX);
-        int dy = ((startY == OverlayConstants.DEFAULT_XY) ? 0 : startY);
+        initScreenHW();
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-                WindowSetup.width == -1999 ? -1 : WindowSetup.width,
-                WindowSetup.height == -1999 ? screenHeight() : WindowSetup.height,
+                WindowSetup.width == -1999 ? screenWidth : WindowSetup.width,
+                WindowSetup.height == -1999 ? screenHeight : WindowSetup.height,
                 0,
                 0,
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY : WindowManager.LayoutParams.TYPE_PHONE,
@@ -184,20 +194,22 @@ public class OverlayService extends Service implements View.OnTouchListener {
         params.gravity = WindowSetup.gravity;
         flutterView.setOnTouchListener(this);
         windowManager.addView(flutterView, params);
-        moveOverlay(dx, dy, null);
         OverlayStatusEmitter.emitIsShowing(true);
         return START_STICKY;
     }
 
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
-    private int screenHeight() {
+    private void initScreenHW() {
         Display display = windowManager.getDefaultDisplay();
         DisplayMetrics dm = new DisplayMetrics();
         display.getRealMetrics(dm);
-        return inPortrait() 
+        screenHeight = inPortrait() 
                 ? dm.heightPixels + statusBarHeightPx() + navigationBarHeightPx()
                 : dm.heightPixels + statusBarHeightPx();
+        screenWidth = inPortrait()
+                ? dm.widthPixels
+                : dm.widthPixels + navigationBarHeightPx();
     }
 
     private int statusBarHeightPx() {
@@ -261,17 +273,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
     }
 
-    private void moveOverlay(int x, int y, MethodChannel.Result result) {
-        if (windowManager != null) {
-            WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
-            params.x = (x == -1999 || x == -1) ? -1 : dpToPx(x);
-            params.y = dpToPx(y);
-            windowManager.updateViewLayout(flutterView, params);
-            if (result != null)
-                result.success(true);
-        } else {
-            if (result != null)
-                result.success(false);
+    private void moveOverlay(double x, double y, double width, double height, MethodChannel.Result result) {
+        boolean rebool = moveOverlay(x, y, width, height);
+        if (null != result) {
+            result.success(rebool);
         }
     }
 
@@ -287,12 +292,26 @@ public class OverlayService extends Service implements View.OnTouchListener {
         return null;
     }
 
-    public static boolean moveOverlay(int x, int y) {
+    public static Map<String, Double> getScreenSize() {
+        if (instance != null && instance.flutterView != null) {
+            instance.initScreenHW();
+            Map<String, Double> size = new HashMap<>();
+            size.put("height", instance.pxToDp(instance.screenHeight));
+            size.put("width", instance.pxToDp(instance.screenWidth));
+            return size;
+        }
+        return null;
+    }
+
+    public static boolean moveOverlay(double x, double y, double width, double height) {
         if (instance != null && instance.flutterView != null) {
             if (instance.windowManager != null) {
+                instance.initScreenHW();
                 WindowManager.LayoutParams params = (WindowManager.LayoutParams) instance.flutterView.getLayoutParams();
-                params.x = (x == -1999 || x == -1) ? -1 : instance.dpToPx(x);
-                params.y = instance.dpToPx(y);
+                params.x = (x == -1999 || x == -1) ? -1 : (int)(x * instance.screenWidth);
+                params.y = (y > 1) ? (int)(y) : (int)(y * instance.screenHeight);
+                params.width = (width > 1) ? instance.dpToPx((int)(width)) : (int)(width * instance.screenWidth);
+                params.height = (height > 1) ? instance.dpToPx((int)(height)) : (int)(height * instance.screenHeight);
                 instance.windowManager.updateViewLayout(instance.flutterView, params);
                 return true;
             } else {
@@ -335,6 +354,22 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     notification);
         }
         instance = this;
+
+        // 注册屏幕方向变化
+        orientationReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (intent.getAction().equals(Intent.ACTION_CONFIGURATION_CHANGED)) {
+                    int orientation = getResources().getConfiguration().orientation;
+                    String orientationText = orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT ?
+                            "竖屏" : "横屏";
+                    Log.d("FloatingWindow", "屏幕方向改变为: " + orientationText);
+                    OverlayStatusEmitter.emitScreenChange();
+                }
+            }
+        };
+        IntentFilter filter = new IntentFilter(Intent.ACTION_CONFIGURATION_CHANGED);
+        registerReceiver(orientationReceiver, filter);
     }
 
     private void createNotificationChannel() {
@@ -363,6 +398,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         return (double) px / mResources.getDisplayMetrics().density;
     }
 
+    /// 竖屏
     private boolean inPortrait() {
         return mResources.getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT;
     }
