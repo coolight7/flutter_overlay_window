@@ -68,6 +68,7 @@ public class FlutterOverlayWindowPlugin implements
         pendingResult = result;
         if (call.method.equals("checkPermission")) {
             result.success(checkOverlayPermission());
+            pendingResult = null;
         } else if (call.method.equals("requestPermission")) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION);
@@ -83,6 +84,7 @@ public class FlutterOverlayWindowPlugin implements
                 mActivity.startActivityForResult(intent, REQUEST_CODE_FOR_OVERLAY_PERMISSION);
             } else {
                 result.success(true);
+                pendingResult = null;
             }
         } else if (call.method.equals("showOverlay")) {
             if (!checkOverlayPermission()) {
@@ -117,26 +119,29 @@ public class FlutterOverlayWindowPlugin implements
             intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
             context.startService(intent);
             result.success(null);
+            pendingResult = null;
         } else if (call.method.equals("isOverlayActive")) {
             result.success(OverlayService.isRunning);
-            return;
         } else if (call.method.equals("moveOverlay")) {
             double x = call.argument("x");
             double y = call.argument("y");
             double width = call.argument("width");
             double height = call.argument("height");
             result.success(OverlayService.moveOverlay(x, y, width, height));
+            pendingResult = null;
         } else if (call.method.equals("getScreenSize")) {
             result.success(OverlayService.getScreenSize());
+            pendingResult = null;
         } else if (call.method.equals("getOverlayPosition")) {
             result.success(OverlayService.getCurrentPosition());
+            pendingResult = null;
         } else if (call.method.equals("closeOverlay")) {
             if (OverlayService.isRunning) {
                 final Intent i = new Intent(context, OverlayService.class);
                 context.stopService(i);
                 result.success(true);
+                pendingResult = null;
             }
-            return;
         } else {
             result.notImplemented();
         }
@@ -264,8 +269,9 @@ public class FlutterOverlayWindowPlugin implements
 
     @Override
     public boolean onActivityResult(int requestCode, int resultCode, Intent data) {
-        if (requestCode == REQUEST_CODE_FOR_OVERLAY_PERMISSION) {
+        if (null != pendingResult && requestCode == REQUEST_CODE_FOR_OVERLAY_PERMISSION) {
             pendingResult.success(checkOverlayPermission());
+            pendingResult = null;
             return true;
         }
         return false;
